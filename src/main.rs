@@ -1,6 +1,5 @@
 use ratatui::prelude::Stylize;
 use ratatui::{DefaultTerminal, style::Style, text::Text};
-
 fn main() -> std::io::Result<()> {
     let mut terminal = ratatui::init();
     let _app = run(&mut terminal);
