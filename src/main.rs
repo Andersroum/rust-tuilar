@@ -28,45 +28,85 @@ struct TimeRange {
 }
 
 impl Calendar {
-    fn get_path() -> Option<PathBuf> {
+    fn get_path() -> PathBuf {
         let dir: PathBuf = match home_dir() {
             None => panic!("no home folder found"),
             Some(home) => home.join(".tuilar-rs"),
         };
 
         let path: PathBuf = dir.join("calendar.json");
-
-        if path.exists() {
-            return Some(path);
-        }
-        None
+        path
     }
 
-    fn load() -> Result<Self, &'static str> {
-        let path: PathBuf = match Calendar::get_path() {
-            None => return Ok(Calendar { notes: vec![] }),
-            Some(p) => p,
-        };
+    fn load() -> Result<Option<Self>, &'static str> {
+        let path: PathBuf = Calendar::get_path();
+        if !path.exists() {
+            return Ok(None);
+        }
 
         let content: String =
             fs::read_to_string(path).map_err(|_| "failed to read the contents of the file")?;
 
         match serde_json::from_str(&content) {
-            Ok(cal) => return Ok(cal),
+            Ok(cal) => return Ok(Some(cal)),
             Err(_) => return Err("failed to deserialize the content of the file"),
         }
+    }
+
+    fn add_note() -> Result<(), &'static str> {
+        let path: PathBuf = Calendar::get_path();
+        let mut cal: Calendar = match Calendar::load() {
+            Ok(None) => {
+                match fs::create_dir_all(path.parent().unwrap()) {
+                    Ok(_) => {}
+                    Err(_) => return Err("failed to initialize the calendar's directory"),
+                }
+                Calendar { notes: vec![] }
+            }
+            Ok(Some(cal)) => cal,
+            Err(e) => return Err(e),
+        };
+
+        let date: NaiveDate = read_date();
+
+        let timerange: Option<TimeRange> = read_time_range();
+
+        let text: String = read_text();
+
+        cal.notes.push(Note {
+            day: date,
+            time: timerange,
+            text,
+        });
+
+        let json =
+            serde_json::to_string_pretty(&cal).map_err(|_| "failed to serialize the calendar")?;
+        fs::write(path, json).map_err(|_| "failed to save changes")?;
+
+        Ok(())
     }
 }
 
 fn main() {
-    let date: NaiveDate = read_date();
-    dbg!(date);
+    println!("what do you want to do?");
+    println!("1: add a note");
 
-    let x = read_time_range();
-    dbg!(x);
+    print!(">");
+    io::stdout().flush().unwrap();
 
-    let y = read_text();
-    println!("{y}")
+    let mut choice: String = String::new();
+    io::stdin()
+        .read_line(&mut choice)
+        .expect("couldn't read your choice");
+
+    let choice: &str = choice.trim();
+    match choice {
+        "1" => match Calendar::add_note() {
+            Ok(()) => {}
+            Err(e) => println!("{}", e),
+        },
+        _ => println!("unknown option"),
+    }
 }
 
 fn read_date() -> NaiveDate {
