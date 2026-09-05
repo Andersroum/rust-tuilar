@@ -3,6 +3,7 @@ use dirs::home_dir;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
+    fmt::Display,
     fs,
     io::{self, Write},
     path::PathBuf,
@@ -21,10 +22,27 @@ struct Note {
     text: String,
 }
 
+impl Display for Note {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.day)?;
+        match &self.time {
+            None => writeln!(f, "   ")?,
+            Some(t) => writeln!(f, "  {} | ", t)?,
+        }
+        write!(f, "{}", self.text)
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct TimeRange {
     start: NaiveTime,
     end: NaiveTime,
+}
+
+impl Display for TimeRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} -> {}", self.start, self.end)
+    }
 }
 
 impl Calendar {
@@ -73,16 +91,57 @@ impl Calendar {
 
         let text: String = read_text();
 
-        cal.notes.push(Note {
+        let new_note: Note = Note {
             day: date,
             time: timerange,
             text,
-        });
+        };
+
+        let pos = cal
+            .notes
+            .binary_search_by(|n| n.day.cmp(&date))
+            .unwrap_or_else(|i| i);
+        cal.notes.insert(pos, new_note);
 
         let json =
             serde_json::to_string_pretty(&cal).map_err(|_| "failed to serialize the calendar")?;
         fs::write(path, json).map_err(|_| "failed to save changes")?;
 
+        Ok(())
+    }
+
+    fn read_notes() -> Result<(), &'static str> {
+        let cal: Calendar = match Calendar::load() {
+            Ok(None) => {
+                println!("no calendar file found");
+                println!("want to create a new note [y/n]?:");
+
+                loop {
+                    let mut choice: String = String::new();
+                    io::stdin()
+                        .read_line(&mut choice)
+                        .expect("should have been able to read");
+                    let choice: &str = choice.trim();
+                    match choice {
+                        "y" | "yes" => match Calendar::add_note() {
+                            Ok(_) => return Ok(()),
+                            Err(e) => return Err(e),
+                        },
+                        "n" | "no" | "nope" => return Ok(()),
+                        _ => {
+                            println!("unknown option");
+                            continue;
+                        }
+                    };
+                }
+            }
+            Ok(Some(c)) => c,
+            Err(e) => return Err(e),
+        };
+
+        for note in &cal.notes {
+            println!("{}", note)
+        }
         Ok(())
     }
 }
